@@ -313,3 +313,8 @@ ENV/
 # Sample thumbs and result
 examples/thumbs
 examples/mosaic.jpg
+
+# Generated sqlite databases
+*.db
+*.db-journal
+*.db-wal
