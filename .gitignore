@@ -1,5 +1,6 @@
 *.pyc
 *~
+*.bak
 images/*
 *.swp
 progress/*
@@ -7,3 +8,8 @@ progress/*
 *.db-journal
 *.backup
 artwork/*
+__pycache__
+.ipynb_checkpoints
+*.ipynb
+examples/thumbs
+examples/mosaic.jpg
