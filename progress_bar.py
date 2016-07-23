@@ -3,6 +3,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
 def progress_bar(total_steps, message=''):
     """This generator gives regular progress reports. Usage:
     pbar = progressbar(len(steps)), "Doing steps...")
@@ -19,12 +20,12 @@ def progress_bar(total_steps, message=''):
         now = time.clock()
         elapsed = now - start
         if (now - previous_notif) > 10:
-            logger.info("%s/%s complete after %d seconds elapsed", 
+            logger.info("%s/%s complete after %d seconds elapsed",
                         step, total_steps, round(elapsed))
             previous_notif = now
         elif (virgin is True and elapsed > 1):
             virgin = False
-            logger.info("%s/%s complete after %d second elapsed", 
+            logger.info("%s/%s complete after %d second elapsed",
                         step, total_steps, round(elapsed))
         yield
         step += 1

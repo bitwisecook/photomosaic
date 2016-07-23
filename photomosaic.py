@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses>.
 
-from __future__ import division
+
 import os
 import logging
 import time
@@ -26,8 +26,8 @@ import scipy
 import scipy.misc
 from scipy.cluster import vq
 from scipy import interpolate
-import Image
-import ImageFilter
+from PIL import Image
+from PIL import ImageFilter
 import sqlite3
 import color_spaces as cs
 from directory_walker import DirectoryWalker
@@ -38,6 +38,7 @@ from progress_bar import progress_bar
 FORMAT = "%(name)s.%(funcName)s:  %(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 logger = logging.getLogger(__name__)
+
 
 def simple(image_dir, target_filename, dimensions, output_file):
     "A convenient wrapper for producing a traditional photomosaic."
@@ -52,6 +53,7 @@ def simple(image_dir, target_filename, dimensions, output_file):
     logger.info('Saving mosaic to %s', output_file)
     mos.save(output_file)
 
+
 def split_regions(img, split_dim):
     """Split an image into subregions.
     Use split_dim=2 or (2,2) or (2,3) etc.
@@ -65,20 +67,22 @@ def split_regions(img, split_dim):
     regions = columns*rows*[None]
     for y in range(rows):
         for x in range(columns):
-            region = img.crop((x*r_size[0], 
+            region = img.crop((x*r_size[0],
                              y*r_size[1],
-                             (x + 1)*r_size[0], 
+                             (x + 1)*r_size[0],
                              (y + 1)*r_size[1]))
             # regions[y][x] = region ## for nested output
             regions[y*columns + x] = region
     return regions
-    
+
+
 def split_quadrants(img):
     """Convenience function: calls split_regions(img, 2). Returns
     a flat 4-element list: top-left, top-right, bottom-left, bottom-right."""
     if img.size[0] & 1 or img.size[1] & 1:
         logger.debug("I am quartering an image with odd dimensions.")
     return split_regions(img, 2)
+
 
 def dominant_color(img, clusters=5, size=50):
     """Group the colors in an image into like clusters, and return
@@ -87,11 +91,13 @@ def dominant_color(img, clusters=5, size=50):
     img.thumbnail((size, size))
     imgarr = scipy.misc.fromimage(img)
     imgarr = imgarr.reshape(scipy.product(imgarr.shape[:2]), imgarr.shape[2])
-    colors, dist = vq.kmeans(imgarr, clusters)
-    vecs, dist = vq.vq(imgarr, colors)
+    colors, dist = vq.kmeans(imgarr.astype(float), clusters)
+    vecs, dist = vq.vq(imgarr.astype(float), colors)
     counts, bins = scipy.histogram(vecs, len(colors))
     dominant_color = colors[counts.argmax()]
-    return map(int, dominant_color) # Avoid returning np.uint8 type.
+    # Avoid returning np.uint8 type.
+    return list(map(int, dominant_color))
+
 
 def connect(db_path):
     "Connect to a sqlite database at db_path. If it does not exist, create it."
@@ -100,8 +106,10 @@ def connect(db_path):
     except IOError:
         logger.error("Cannot connect to SQLite database at %s",  db_path)
         return
-    db.row_factory = sqlite3.Row # Rows are dictionaries.
+    # Rows are dictionaries.
+    db.row_factory = sqlite3.Row
     return db
+
 
 def create_tables(db):
     """Create Images for image meta info, Color for RGB values and LabColor
@@ -141,23 +149,26 @@ def create_tables(db):
     c.close()
     db.commit()
 
+
 def in_db(filename, db):
     c = db.cursor()
-    try: 
+    try:
         c.execute("SELECT count(*) FROM Images WHERE filename=?", (filename,))
         return c.fetchone()[0] > 0
     finally:
         c.close()
     return False
 
+
 def get_size(db):
     c = db.cursor()
-    try: 
+    try:
         c.execute("SELECT count(*) FROM Images")
-        return c.fetchone()[0] 
+        return c.fetchone()[0]
     finally:
         c.close()
-    return 0   
+    return 0
+
 
 def insert(filename, w, h, rgb, lab, db):
     """Insert image info in the Images table and color information in the
@@ -184,7 +195,8 @@ def insert(filename, w, h, rgb, lab, db):
                        filename)
     finally:
         c.close()
-    
+
+
 def pool(image_dir, db_name):
     """Analyze all the images in image_dir, and store the results in
     a sqlite database at db_name."""
@@ -192,40 +204,40 @@ def pool(image_dir, db_name):
     try:
         create_tables(db)
         walker = DirectoryWalker(image_dir)
-        file_count = len(list(walker)) # stupid but needed but progress bar
+        # stupid but needed but progress bar
+        file_count = len(list(walker))
         pbar = progress_bar(file_count, "Analyzing images and building db")
         walker = DirectoryWalker(image_dir)
         for filename in walker:
             if in_db(filename, db):
-                logger.warning("Image %s is already in the table. Skipping it."%filename)
-                pbar.next()
+                logger.warning("Image %s is already in the table. Skipping it." % filename)
+                next(pbar)
                 continue
             try:
                 img = Image.open(filename)
             except IOError:
-                logger.warning("Cannot open %s as an image. Skipping it.",
-                               filename)
-                pbar.next()
+                logger.warning("Cannot open %s as an image. Skipping it.", filename)
+                next(pbar)
                 continue
             if img.mode != 'RGB':
                 logger.warning("RGB images only. Skipping %s.", filename)
-                pbar.next()
+                next(pbar)
                 continue
             w, h = img.size
-            try:
-                regions = split_quadrants(img)
-                rgb = map(dominant_color, regions) 
-                lab = map(cs.rgb2lab, rgb)
-            except:
-                logger.warning("Unknown problem analyzing %s. Skipping it.",
-                               filename)
-                continue
+            # try:
+            regions = split_quadrants(img)
+            rgb = list(map(dominant_color, regions))
+            lab = list(map(cs.rgb2lab, rgb))
+            # except:
+            #     logger.warning("Unknown problem analyzing %s. Skipping it.", filename)
+            #     continue
             insert(filename, w, h, rgb, lab, db)
-            pbar.next()
+            next(pbar)
         db.commit()
-        logger.info('Collection %s built with %d images'%(db_name, get_size(db)))
+        logger.info('Collection %s built with %d images' % (db_name, get_size(db)))
     finally:
         db.close()
+
 
 def open(target_filename):
     "Just a wrapper for Image.open from PIL"
@@ -235,26 +247,28 @@ def open(target_filename):
         logger.warning("Cannot open %s as an image.", target_filename)
         return
 
+
 def plot_histograms(hist, title=''):
     "Plot an RGB histogram given as a dictionary with channel keys."
     import matplotlib.pyplot as plt
     fig, (red, green, blue) = plt.subplots(3, sharex=True, sharey=True)
-    domain = range(0, 256)
+    domain = list(range(0, 256))
     red.fill_between(domain, hist['red'],
                      facecolor='red')
     green.fill_between(domain, 0, hist['green'],
                        facecolor='green')
     blue.fill_between(domain, 0, hist['blue'],
                       facecolor='blue')
-    red.set_xlim(0,256)
+    red.set_xlim(0, 256)
     red.set_ylim(ymin=0)
     red.set_title(title)
     fig.show()
 
+
 def img_histogram(img, mask=None):
     keys = 'red', 'green', 'blue'
-    channels = dict(zip(keys, img.split()))
-    hist= {}
+    channels = dict(list(zip(keys, img.split())))
+    hist = {}
     for ch in keys:
         if mask:
             h = channels[ch].histogram(mask.convert("1"))
@@ -263,6 +277,7 @@ def img_histogram(img, mask=None):
         normalized_h = [256./sum(h)*v for v in h]
         hist[ch] = normalized_h
     return hist
+
 
 def untune(mos, img, orig_img, mask=None, amount=1):
     if mask:
@@ -274,6 +289,7 @@ def untune(mos, img, orig_img, mask=None, amount=1):
         img_palette = compute_palette(img_histogram(img))
     return Image.blend(mos, adjust_levels(mos, img_palette, orig_palette),
                           amount)
+
 
 def tune(target_img, db_name, mask=None, quiet=True):
     """Adjust the levels of the image to match the colors available in the
@@ -295,43 +311,45 @@ def tune(target_img, db_name, mask=None, quiet=True):
         # before and after the alteration.
         keys = 'red', 'green', 'blue'
         values = [channel.histogram() for channel in target_img.split()]
-        totals = map(sum, values)
-        norm = [map(lambda x: 256*x/totals[i], val) \
+        totals = list(map(sum, values))
+        norm = [[256*x/totals[i] for x in val]
                 for i, val in enumerate(values)]
-        orig_hist = dict(zip(keys, norm)) 
+        orig_hist = dict(list(zip(keys, norm)))
         values = [channel.histogram() for channel in adjusted_img.split()]
-        totals = map(sum, values)
-        norm = [map(lambda x: 256*x/totals[i], val) \
+        totals = list(map(sum, values))
+        norm = [[256*x/totals[i] for x in val]
                 for i, val in enumerate(values)]
-        adjusted_hist = dict(zip(keys, norm)) 
+        adjusted_hist = dict(list(zip(keys, norm)))
         plot_histograms(pool_hist, title='Images in the pool')
         plot_histograms(orig_hist, title='Unaltered target image')
         plot_histograms(adjusted_hist, title='Adjusted target image')
     return adjusted_img
 
+
 def pool_histogram(db):
     """Generate a histogram of the images in the pool.
     Return a dictionary of the channels red, green blue.
     Each dict entry contains a list of the frequencies correspond to the
-    domain 0 - 255.""" 
+    domain 0 - 255."""
     hist = {}
     c = db.cursor()
-    try: 
+    try:
         for ch in ['red', 'green', 'blue']:
             c.execute("""SELECT {ch}, count(*)
-                         FROM Colors 
+                         FROM Colors
                          GROUP BY {ch}""".format(ch=ch))
-            values, counts = zip(*c.fetchall())
+            values, counts = list(zip(*c.fetchall()))
             # Normalize the histogram to 256 for readability,
             # and fill in 0 for missing entries.
-            full_domain = range(0,256)
+            full_domain = list(range(0, 256))
             N = sum(counts)
-            all_counts = [256./N*counts[values.index(i)] if i in values else 0 \
+            all_counts = [256./N*counts[values.index(i)] if i in values else 0
                           for i in full_domain]
             hist[ch] = all_counts
     finally:
         c.close()
     return hist
+
 
 def compute_palette(hist):
     """A palette maps a channel into the space of available colors, gleaned
@@ -341,37 +359,41 @@ def compute_palette(hist):
     for ch in ['red', 'green', 'blue']:
         integrals = np.cumsum(hist[ch])
         blocky_integrals = np.floor(integrals + 0.01).astype(int)
-        bars = np.ediff1d(blocky_integrals,to_begin=blocky_integrals[0])
+        bars = np.ediff1d(blocky_integrals, to_begin=blocky_integrals[0])
         p = [[color]*freq for color, freq in enumerate(bars.tolist())]
         p = [c for sublist in p for c in sublist]
         assert len(p) == 256, "Palette should have 256 entries."
         palette[ch] = p
     return palette
 
+
 def adjust_levels(target_img, from_palette, to_palette):
     """Transform the colors of an image to match the color palette of
     another image."""
     keys = 'red', 'green', 'blue'
-    channels = dict(zip(keys, target_img.split()))
-    f, g = from_palette, to_palette # compact notation
-    func = {} # function to transform color at each pixel
+    channels = dict(list(zip(keys, target_img.split())))
+    # compact notation
+    f, g = from_palette, to_palette
+    # function to transform color at each pixel
+    func = {}
     for ch in keys:
         def j(x):
-           while True:
-               try:
-                   inv_f = f[ch].index(x)
-                   break
-               except ValueError:
-                   if x < 255:
-                       x += 1
-                       continue 
-                   else:
-                       inv_f = 255
-                       break
-           return to_palette[ch][inv_f]
-        func[ch] = j 
+            while True:
+                try:
+                    inv_f = f[ch].index(x)
+                    break
+                except ValueError:
+                    if x < 255:
+                        x += 1
+                        continue
+                    else:
+                        inv_f = 255
+                        break
+            return to_palette[ch][inv_f]
+        func[ch] = j
     adjusted_channels = [Image.eval(channels[ch], func[ch]) for ch in keys]
     return Image.merge('RGB', adjusted_channels)
+
 
 class Tile(object):
     """Tile wraps the Image class, so all methods that apply to images (show,
@@ -382,7 +404,8 @@ class Tile(object):
         self.x = x
         self.y = y
         self._mask = mask.convert("L") if mask else None
-        self._blank = None # meaning undetermined (so far)
+        # meaning undetermined (so far)
+        self._blank = None
         self._ancestry = ancestry
         self._depth = len(self._ancestry)
         if ancestor_size:
@@ -391,11 +414,13 @@ class Tile(object):
             self._ancestor_size = self.size
 
     def crop(self, *args):
-        if self._mask: self._mask.crop(*args)
+        if self._mask:
+            self._mask.crop(*args)
         return self._img.crop(*args)
 
     def resize(self, *args):
-        if self._mask: self._mask.resize(*args)
+        if self._mask:
+            self._mask.resize(*args)
         return self._img.resize(*args)
 
     def __getattr__(self, key):
@@ -404,14 +429,14 @@ class Tile(object):
         return getattr(self._img, key)
 
     def pos(self):
-        return self.x, self.y 
+        return self.x, self.y
 
     def avg_color(self):
         t = [0]*3
         for rgb in self._rgb:
             for i, c in enumerate(rgb):
                 t[i] += c
-        return [a/len(self._rgb) for a in t] 
+        return [a/len(self._rgb) for a in t]
 
     @property
     def ancestry(self):
@@ -447,12 +472,13 @@ class Tile(object):
 
     @match.setter
     def match(self, value):
-        self._match = value # sqlite Row object
+        # sqlite Row object
+        self._match = value
         try:
+            # Reversed on purpose, for thumbnail. Largest possible size
+            # we could want later.
             self._match_img = open_tile(self._match['filename'],
                 (2*self._ancestor_size[1], 2*self.ancestor_size[0]))
-                # Reversed on purpose, for thumbnail. Largest possible size
-                # we could want later.
         except IOError:
             logger.error("The filename specified in the database as "
                          "cannot be found. Check: %s", self._match['filename'])
@@ -469,17 +495,22 @@ class Tile(object):
         """Decide whether this tile is blank. Where the mask is grey, tiles
         and blanked probabilitisically. The kwarg min_depth limits this
         scattered behavior to small tiles."""
-        if not self._mask: # no mask
+        # no mask
+        if not self._mask:
             self._blank = False
             return
         brightest_pixel = self._mask.getextrema()[1]
-        if brightest_pixel == 0: # black mask 
+        if brightest_pixel == 0:
+            # black mask
             self._blank = True
-        elif brightest_pixel == 255: # white mask
+        elif brightest_pixel == 255:
+            # white mask
             self._blank = False
-        elif self._depth < min_depth: # gray mask -- big tile
+        elif self._depth < min_depth:
+            # gray mask -- big tile
             self._blank = True
-        elif 255*np.random.rand() > brightest_pixel: # small tile
+        elif 255*np.random.rand() > brightest_pixel:
+            # small tile
             self._blank = True
         else:
             self._blank = False
@@ -497,17 +528,16 @@ class Tile(object):
         if darkest_pixel == 255:
             return False
         return True
- 
+
     def dynamic_range(self):
         """What is the dynamic range in this image? Return the
         average dynamic range over RGB channels. Blur the image
         first to smooth away outliers."""
-        return sum(map(lambda (x, y): y - x, 
-                       self._img.filter(ImageFilter.BLUR).getextrema()))//3
+        return sum([x_y[1] - x_y[0] for x_y in self._img.filter(ImageFilter.BLUR).getextrema()])//3
 
     def procreate(self):
         """Divide image into quadrants, make each into a child tile,
-        and return them all in a list.""" 
+        and return them all in a list."""
         width = self._img.size[0] // 2
         height = self._img.size[1] // 2
         children = []
@@ -527,6 +557,7 @@ class Tile(object):
                 children.append(child)
         return children
 
+
 def partition(img, dimensions, mask=None, depth=0, hdr=80,
               debris=False, min_debris_depth=1, base_width=None):
     "Partition the target image into a list of Tile objects."
@@ -537,11 +568,11 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
         width = base_width * dimensions[0]
         factor = base_width / cwidth
         height = int(img.size[1] * factor)
-        print img.size, dimensions, width, height
+        print(img.size, dimensions, width, height)
         img = crop_to_fit(img, (width, height))
     # img.size must have dimensions*2**depth as a factor.
     factor = dimensions[0]*2**depth, dimensions[1]*2**depth
-    new_size = tuple([int(factor[i]*np.ceil(img.size[i]/factor[i])) \
+    new_size = tuple([int(factor[i]*np.ceil(img.size[i]/factor[i]))
                       for i in [0, 1]])
     logger.info("Resizing image to %s, a round number for partitioning. "
                 "If necessary, I will crop to fit.",
@@ -550,8 +581,9 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
     if mask:
         mask = crop_to_fit(mask, new_size)
         if not debris:
-            mask = mask.convert("1") # no gray
-    width = img.size[0] // dimensions[0] 
+            # no gray
+            mask = mask.convert("1")
+    width = img.size[0] // dimensions[0]
     height = img.size[1] // dimensions[1]
     tiles = []
     for y in range(dimensions[1]):
@@ -565,7 +597,7 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
                 mask_img = None
             tile = Tile(tile_img, x, y, mask=mask_img)
             tiles.append(tile)
-    for g in xrange(depth):
+    for g in range(depth):
         old_tiles = tiles
         tiles = []
         for tile in old_tiles:
@@ -583,13 +615,15 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
                 len([1 for tile in tiles if tile.blank]))
     return tiles
 
+
 def analyze(tiles):
     """Determine dominant colors of target tiles, and save that information
     in the Tile object."""
     pbar = progress_bar(len(tiles), "Analyzing images")
     for tile in tiles:
         analyze_one(tile)
-        pbar.next()
+        next(pbar)
+
 
 def analyze_one(tile):
     """"Determine dominant colors of target tiles, and save that information
@@ -597,25 +631,27 @@ def analyze_one(tile):
     if tile.blank:
         return
     regions = split_quadrants(tile)
-    tile.rgb = map(dominant_color, regions) 
-    tile.lab = map(cs.rgb2lab, tile.rgb)
+    tile.rgb = list(map(dominant_color, regions))
+    tile.lab = list(map(cs.rgb2lab, tile.rgb))
+
 
 def choose_match(lab, db, tolerance=1, usage_penalty=1):
     """If there is are good matches (within tolerance times the 'just noticeable
     difference'), return one at random. If not, choose the closest match
     deterministically. Return the match (as a sqlite Row dictionary) and the
     number of good matches."""
-    JND = 2.3 # "just noticeable difference"
+    # "just noticeable difference"
+    JND = 2.3
     (L1, a1, b1), (L2, a2, b2), (L3, a3, b3), (L4, a4, b4) = lab
     tokens = {'L1': L1, 'a1': a1, 'b1': b1,
               'L2': L2, 'a2': a2, 'b2': b2,
               'L3': L3, 'a3': a3, 'b3': b3,
               'L4': L4, 'a4': a4, 'b4': b4,
               'tol': tolerance*JND, 'usage_penalty': usage_penalty*JND}
-    
+
     c = db.cursor()
     try:
-        # Before we compute the exact color distance E, 
+        # Before we compute the exact color distance E,
         # which is expensive and requires
         # adding 12 numbers in quadrature, the WHERE clause computes
         # a simpler upper bound on E and filters out disqualifying rows.
@@ -626,13 +662,13 @@ def choose_match(lab, db, tolerance=1, usage_penalty=1):
         c.execute("""SELECT
                      image_id,
                      ((L1-({L1}))*(L1-({L1}))
-                       + (a1-({a1}))*(a1-({a1})) 
+                       + (a1-({a1}))*(a1-({a1}))
                        + (b1-({b1}))*(b1-({b1}))
                        + (L2-({L2}))*(L2-({L2}))
-                       + (a2-({a2}))*(a2-({a2})) 
+                       + (a2-({a2}))*(a2-({a2}))
                        + (b2-({b2}))*(b2-({b2}))
                        + (L3-({L3}))*(L3-({L3}))
-                       + (a3-({a3}))*(a3-({a3})) 
+                       + (a3-({a3}))*(a3-({a3}))
                        + (b3-({b3}))*(b3-({b3}))
                        + (L4-({L4}))*(L4-({L4}))
                        + (a4-({a4}))*(a4-({a4}))
@@ -649,11 +685,11 @@ def choose_match(lab, db, tolerance=1, usage_penalty=1):
                        + L4-({L4}) + a4-({a4}) + b4-({b4})
                      < 4*{tol}
                      ORDER BY
-                     E_sq 
+                     E_sq
                      + {tol}*{tol}*RANDOM()/9223372036854775808.
                      + {usage_penalty}*{usage_penalty}*usages ASC
                      LIMIT 1""".format(**tokens))
-                     # 9223372036854775808 is the range of sqlite RANDOM()
+        # 9223372036854775808 is the range of sqlite RANDOM()
         match = c.fetchone()
         if not match:
             return choose_match(lab, db, tolerance + 1)
@@ -663,6 +699,7 @@ def choose_match(lab, db, tolerance=1, usage_penalty=1):
         c.close()
     logger.debug("%s", match)
     return match
+
 
 def crop_to_fit(img, tile_size):
     "Return a copy of img cropped to precisely fill the dimesions tile_size."
@@ -689,22 +726,27 @@ def crop_to_fit(img, tile_size):
     img = img.resize((tile_w, tile_h), Image.ANTIALIAS)
     return img
 
+
 def shrink_by_lightness(pad, tile_size, dL):
     """The greater the greater the lightness discrepancy dL
     the smaller the tile will shrunk."""
     sgn = lambda x: (x > 0) - (x < 0)
     if sgn(pad)*dL < 0:
         return tile_size
-    MAX_dL = 100 # the largest possible distance in Lab space
-    MIN = 0.5 # not so close small that it's a speck
-    MAX = 0.95 # not so close to unity that is looks accidental
+    # the largest possible distance in Lab space
+    MAX_dL = 100
+    # not so close small that it's a speck
+    MIN = 0.5
+    # not so close to unity that is looks accidental
+    MAX = 0.95
     scaling = MAX - (MAX - MIN)*(-pad*dL)/MAX_dL
     shrunk_size = [int(scaling*dim) for dim in tile_size]
     return shrunk_size
 
+
 def tile_position(tile, size, scatter=False, margin=0):
     """Return the x, y position of the tile in the mosaic, according for
-    possible margins and optional random nudges for a 'scattered' look.""" 
+    possible margins and optional random nudges for a 'scattered' look."""
     # Sum position of original ancestor tile, relative position of this tile's
     # container, and any margins that this tile has.
     ancestor_pos = [tile.x*tile.ancestor_size[0], tile.y*tile.ancestor_size[1]]
@@ -714,15 +756,16 @@ def tile_position(tile, size, scatter=False, margin=0):
         x_size, y_size = tile.ancestor_size
         rel_pos = [[x*x_size//2**(gen + 1), y*y_size//2**(gen + 1)] \
                            for gen, (x, y) in enumerate(tile.ancestry)]
-        
+
     if tile.size == size:
         padding = [0, 0]
     else:
-        padding = map(lambda (x, y): (x - y)//2, zip(*([size, tile.size])))
+        padding = [(x_y1[0] - x_y1[1])//2 for x_y1 in zip(*([size, tile.size]))]
     if scatter:
         padding = [random.randint(0, 1 + margin), random.randint(0, 1 + margin)]
-    pos = tuple(map(sum, zip(*([ancestor_pos] + rel_pos + [padding]))))
+    pos = tuple(map(sum, list(zip(*([ancestor_pos] + rel_pos + [padding])))))
     return pos
+
 
 @memo
 def open_tile(filename, temp_size=(100,100)):
@@ -730,6 +773,7 @@ def open_tile(filename, temp_size=(100,100)):
     im = Image.open(filename)
     im.thumbnail(temp_size, Image.ANTIALIAS) # Resize to fit within temp_size without cropping.
     return im
+
 
 def matchmaker(tiles, db_name, tolerance=1, usage_penalty=1, usage_impunity=2):
     """Assign each tile a new image, and open that image in the Tile object."""
@@ -739,27 +783,27 @@ def matchmaker(tiles, db_name, tolerance=1, usage_penalty=1, usage_impunity=2):
         pbar = progress_bar(len(tiles), "Choosing and loading matching images")
         for tile in tiles:
             if tile.blank:
-                pbar.next()
+                next(pbar)
                 continue
             tile.match = choose_match(tile.lab, db, tolerance,
                 usage_penalty if tile.depth < usage_impunity else 0)
-            pbar.next()
+            next(pbar)
     finally:
         db.close()
 
+
 def mosaic(tiles, pad=False, scatter=False, margin=0, scaled_margin=False,
            background=(255, 255, 255)):
-    """Return the mosaic image.""" 
+    """Return the mosaic image."""
     # Infer dimensions so they don't have to be passed in the function call.
-    dimensions = map(max, zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))
-    mosaic_size = map(lambda (x, y): x*y,
-                         zip(*[tiles[0].ancestor_size, dimensions]))
+    dimensions = list(map(max, list(zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))))
+    mosaic_size = [x_y2[0]*x_y2[1] for x_y2 in zip(*[tiles[0].ancestor_size, dimensions])]
     mos = Image.new('RGB', mosaic_size, background)
     pbar = progress_bar(len(tiles), "Scaling and placing tiles")
     random.shuffle(tiles)
     for tile in tiles:
         if tile.blank:
-            pbar.next()
+            next(pbar)
             continue
         if pad:
             size = shrink_by_lightness(pad, tile.size, tile.match['dL'])
@@ -772,16 +816,16 @@ def mosaic(tiles, pad=False, scatter=False, margin=0, scaled_margin=False,
         else:
             pos = tile_position(tile, size, scatter, margin)
         mos.paste(crop_to_fit(tile.match_img, size), pos)
-        pbar.next()
+        next(pbar)
     return mos
+
 
 def assemble_tiles(tiles, margin=1):
     """This is not used to build the final mosaic. It's a handy function for
     assembling new tiles (without blanks) to see how partitioning looks."""
     # Infer dimensions so they don't have to be passed in the function call.
-    dimensions = map(max, zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))
-    mosaic_size = map(lambda (x, y): x*y,
-                         zip(*[tiles[0].ancestor_size, dimensions]))
+    dimensions = list(map(max, list(zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))))
+    mosaic_size = [x_y3[0]*x_y3[1] for x_y3 in zip(*[tiles[0].ancestor_size, dimensions])]
     background = (255, 255, 255)
     mos = Image.new('RGB', mosaic_size, background)
     for tile in tiles:
@@ -792,9 +836,11 @@ def assemble_tiles(tiles, margin=1):
         mos.paste(tile.resize(shrunk), pos)
     return mos
 
+
 def color_hex(rgb):
     "Convert [r, g, b] to a HEX value with a leading # character."
     return '#' + ''.join(chr(c) for c in rgb).encode('hex')
+
 
 def reset_usage(db):
     try:
@@ -803,6 +849,7 @@ def reset_usage(db):
     finally:
         c.close()
     return
+
 
 def testing():
     pm.simple('images/samples', 'images/samples/dan-allan.jpg', (10,10), 'output.jpg')

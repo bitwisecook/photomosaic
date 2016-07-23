@@ -1,5 +1,6 @@
 import os
 
+
 class DirectoryWalker:
     """A forward iterator that traverses the files in a directory tree.
     Source: http://effbot.org/librarybook/os-path-walk-example-3.py"""
