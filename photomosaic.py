@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses>.
 
-
 import os
 import logging
 import time
@@ -64,15 +63,13 @@ def split_regions(img, split_dim):
         columns, rows = split_dim
     r_size = img.size[0] // columns, img.size[1] // rows
     # regions = [[None for c in range(columns)] for r in range(rows)]
-    regions = columns*rows*[None]
+    regions = columns * rows * [None]
     for y in range(rows):
         for x in range(columns):
-            region = img.crop((x*r_size[0],
-                             y*r_size[1],
-                             (x + 1)*r_size[0],
-                             (y + 1)*r_size[1]))
+            region = img.crop((x * r_size[0], y * r_size[1], (x + 1) * r_size[0],
+                               (y + 1) * r_size[1]))
             # regions[y][x] = region ## for nested output
-            regions[y*columns + x] = region
+            regions[y * columns + x] = region
     return regions
 
 
@@ -104,7 +101,7 @@ def connect(db_path):
     try:
         db = sqlite3.connect(db_path)
     except IOError:
-        logger.error("Cannot connect to SQLite database at %s",  db_path)
+        logger.error("Cannot connect to SQLite database at %s", db_path)
         return
     # Rows are dictionaries.
     db.row_factory = sqlite3.Row
@@ -153,7 +150,7 @@ def create_tables(db):
 def in_db(filename, db):
     c = db.cursor()
     try:
-        c.execute("SELECT count(*) FROM Images WHERE filename=?", (filename,))
+        c.execute("SELECT count(*) FROM Images WHERE filename=?", (filename, ))
         return c.fetchone()[0] > 0
     finally:
         c.close()
@@ -176,8 +173,7 @@ def insert(filename, w, h, rgb, lab, db):
     c = db.cursor()
     try:
         c.execute("""INSERT INTO Images (usages, w, h, filename)
-                     VALUES (?, ?, ?, ?)""",
-                  (0, w, h, filename))
+                     VALUES (?, ?, ?, ?)""", (0, w, h, filename))
         image_id = c.lastrowid
         c.executemany("""INSERT INTO Colors (image_id, region, red, green, blue)
                          VALUES (?, ?, ?, ?, ?)""",
@@ -186,13 +182,11 @@ def insert(filename, w, h, rgb, lab, db):
         c.execute("""INSERT INTO LabColors (image_id,
                      L1, a1, b1, L2, a2, b2, L3, a3, b3, L4, a4, b4)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                     tuple([image_id] + [ch for reg in lab for ch in reg]))
+                  tuple([image_id] + [ch for reg in lab for ch in reg]))
     except sqlite3.IntegrityError:
-        logger.warning("Image %s is already in the table. Skipping it.",
-                       filename)
+        logger.warning("Image %s is already in the table. Skipping it.", filename)
     except:
-        logger.warning("Unknown problem with image %s. Skipping it.",
-                       filename)
+        logger.warning("Unknown problem with image %s. Skipping it.", filename)
     finally:
         c.close()
 
@@ -253,12 +247,9 @@ def plot_histograms(hist, title=''):
     import matplotlib.pyplot as plt
     fig, (red, green, blue) = plt.subplots(3, sharex=True, sharey=True)
     domain = list(range(0, 256))
-    red.fill_between(domain, hist['red'],
-                     facecolor='red')
-    green.fill_between(domain, 0, hist['green'],
-                       facecolor='green')
-    blue.fill_between(domain, 0, hist['blue'],
-                      facecolor='blue')
+    red.fill_between(domain, hist['red'], facecolor='red')
+    green.fill_between(domain, 0, hist['green'], facecolor='green')
+    blue.fill_between(domain, 0, hist['blue'], facecolor='blue')
     red.set_xlim(0, 256)
     red.set_ylim(ymin=0)
     red.set_title(title)
@@ -274,7 +265,7 @@ def img_histogram(img, mask=None):
             h = channels[ch].histogram(mask.convert("1"))
         else:
             h = channels[ch].histogram()
-        normalized_h = [256./sum(h)*v for v in h]
+        normalized_h = [256. / sum(h) * v for v in h]
         hist[ch] = normalized_h
     return hist
 
@@ -287,8 +278,7 @@ def untune(mos, img, orig_img, mask=None, amount=1):
     else:
         orig_palette = compute_palette(img_histogram(orig_img))
         img_palette = compute_palette(img_histogram(img))
-    return Image.blend(mos, adjust_levels(mos, img_palette, orig_palette),
-                          amount)
+    return Image.blend(mos, adjust_levels(mos, img_palette, orig_palette), amount)
 
 
 def tune(target_img, db_name, mask=None, quiet=True):
@@ -312,13 +302,11 @@ def tune(target_img, db_name, mask=None, quiet=True):
         keys = 'red', 'green', 'blue'
         values = [channel.histogram() for channel in target_img.split()]
         totals = list(map(sum, values))
-        norm = [[256*x/totals[i] for x in val]
-                for i, val in enumerate(values)]
+        norm = [[256 * x / totals[i] for x in val] for i, val in enumerate(values)]
         orig_hist = dict(list(zip(keys, norm)))
         values = [channel.histogram() for channel in adjusted_img.split()]
         totals = list(map(sum, values))
-        norm = [[256*x/totals[i] for x in val]
-                for i, val in enumerate(values)]
+        norm = [[256 * x / totals[i] for x in val] for i, val in enumerate(values)]
         adjusted_hist = dict(list(zip(keys, norm)))
         plot_histograms(pool_hist, title='Images in the pool')
         plot_histograms(orig_hist, title='Unaltered target image')
@@ -343,7 +331,7 @@ def pool_histogram(db):
             # and fill in 0 for missing entries.
             full_domain = list(range(0, 256))
             N = sum(counts)
-            all_counts = [256./N*counts[values.index(i)] if i in values else 0
+            all_counts = [256. / N * counts[values.index(i)] if i in values else 0
                           for i in full_domain]
             hist[ch] = all_counts
     finally:
@@ -360,7 +348,7 @@ def compute_palette(hist):
         integrals = np.cumsum(hist[ch])
         blocky_integrals = np.floor(integrals + 0.01).astype(int)
         bars = np.ediff1d(blocky_integrals, to_begin=blocky_integrals[0])
-        p = [[color]*freq for color, freq in enumerate(bars.tolist())]
+        p = [[color] * freq for color, freq in enumerate(bars.tolist())]
         p = [c for sublist in p for c in sublist]
         assert len(p) == 256, "Palette should have 256 entries."
         palette[ch] = p
@@ -377,6 +365,7 @@ def adjust_levels(target_img, from_palette, to_palette):
     # function to transform color at each pixel
     func = {}
     for ch in keys:
+
         def j(x):
             while True:
                 try:
@@ -390,6 +379,7 @@ def adjust_levels(target_img, from_palette, to_palette):
                         inv_f = 255
                         break
             return to_palette[ch][inv_f]
+
         func[ch] = j
     adjusted_channels = [Image.eval(channels[ch], func[ch]) for ch in keys]
     return Image.merge('RGB', adjusted_channels)
@@ -399,6 +389,7 @@ class Tile(object):
     """Tile wraps the Image class, so all methods that apply to images (show,
     save, crop, size, ...) apply to Tiles. Tiles also store contextual
     information that is used to reassembled them in the end."""
+
     def __init__(self, img, x, y, mask=None, ancestry=[], ancestor_size=None):
         self._img = img
         self.x = x
@@ -432,11 +423,11 @@ class Tile(object):
         return self.x, self.y
 
     def avg_color(self):
-        t = [0]*3
+        t = [0] * 3
         for rgb in self._rgb:
             for i, c in enumerate(rgb):
                 t[i] += c
-        return [a/len(self._rgb) for a in t]
+        return [a / len(self._rgb) for a in t]
 
     @property
     def ancestry(self):
@@ -478,7 +469,7 @@ class Tile(object):
             # Reversed on purpose, for thumbnail. Largest possible size
             # we could want later.
             self._match_img = open_tile(self._match['filename'],
-                (2*self._ancestor_size[1], 2*self.ancestor_size[0]))
+                                        (2 * self._ancestor_size[1], 2 * self.ancestor_size[0]))
         except IOError:
             logger.error("The filename specified in the database as "
                          "cannot be found. Check: %s", self._match['filename'])
@@ -509,7 +500,7 @@ class Tile(object):
         elif self._depth < min_depth:
             # gray mask -- big tile
             self._blank = True
-        elif 255*np.random.rand() > brightest_pixel:
+        elif 255 * np.random.rand() > brightest_pixel:
             # small tile
             self._blank = True
         else:
@@ -533,7 +524,8 @@ class Tile(object):
         """What is the dynamic range in this image? Return the
         average dynamic range over RGB channels. Blur the image
         first to smooth away outliers."""
-        return sum([x_y[1] - x_y[0] for x_y in self._img.filter(ImageFilter.BLUR).getextrema()])//3
+        return sum(
+            [x_y[1] - x_y[0] for x_y in self._img.filter(ImageFilter.BLUR).getextrema()]) // 3
 
     def procreate(self):
         """Divide image into quadrants, make each into a child tile,
@@ -543,23 +535,32 @@ class Tile(object):
         children = []
         for y in [0, 1]:
             for x in [0, 1]:
-                tile_img = self._img.crop((x*width, y*height,
-                                    (x + 1)*width, (y + 1)*height))
+                tile_img = self._img.crop((x * width, y * height, (x + 1) * width,
+                                           (y + 1) * height))
                 if self._mask:
-                    mask_img = self._mask.crop((x*width, y*height,
-                                         (x + 1)*width, (y + 1)*height))
+                    mask_img = self._mask.crop((x * width, y * height, (x + 1) * width,
+                                                (y + 1) * height))
                 else:
                     mask_img = None
-                child = Tile(tile_img, self.x, self.y,
-                             mask=mask_img,
-                             ancestry=self._ancestry + [(x, y)],
-                             ancestor_size=self._ancestor_size)
+                child = Tile(
+                    tile_img,
+                    self.x,
+                    self.y,
+                    mask=mask_img,
+                    ancestry=self._ancestry + [(x, y)],
+                    ancestor_size=self._ancestor_size)
                 children.append(child)
         return children
 
 
-def partition(img, dimensions, mask=None, depth=0, hdr=80,
-              debris=False, min_debris_depth=1, base_width=None):
+def partition(img,
+              dimensions,
+              mask=None,
+              depth=0,
+              hdr=80,
+              debris=False,
+              min_debris_depth=1,
+              base_width=None):
     "Partition the target image into a list of Tile objects."
     if isinstance(dimensions, int):
         dimensions = dimensions, dimensions
@@ -571,12 +572,10 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
         print(img.size, dimensions, width, height)
         img = crop_to_fit(img, (width, height))
     # img.size must have dimensions*2**depth as a factor.
-    factor = dimensions[0]*2**depth, dimensions[1]*2**depth
-    new_size = tuple([int(factor[i]*np.ceil(img.size[i]/factor[i]))
-                      for i in [0, 1]])
+    factor = dimensions[0] * 2**depth, dimensions[1] * 2**depth
+    new_size = tuple([int(factor[i] * np.ceil(img.size[i] / factor[i])) for i in [0, 1]])
     logger.info("Resizing image to %s, a round number for partitioning. "
-                "If necessary, I will crop to fit.",
-                new_size)
+                "If necessary, I will crop to fit.", new_size)
     img = crop_to_fit(img, new_size)
     if mask:
         mask = crop_to_fit(mask, new_size)
@@ -588,11 +587,9 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
     tiles = []
     for y in range(dimensions[1]):
         for x in range(dimensions[0]):
-            tile_img = img.crop((x*width, y*height,
-                                (x + 1)*width, (y + 1)*height))
+            tile_img = img.crop((x * width, y * height, (x + 1) * width, (y + 1) * height))
             if mask:
-                mask_img = mask.crop((x*width, y*height,
-                                     (x + 1)*width, (y + 1)*height))
+                mask_img = mask.crop((x * width, y * height, (x + 1) * width, (y + 1) * height))
             else:
                 mask_img = None
             tile = Tile(tile_img, x, y, mask=mask_img)
@@ -607,12 +604,10 @@ def partition(img, dimensions, mask=None, depth=0, hdr=80,
             else:
                 # Keep tile -- no children.
                 tiles.append(tile)
-        logging.info("There are %d tiles in generation %d",
-                     len(tiles), g)
+        logging.info("There are %d tiles in generation %d", len(tiles), g)
     # Now that all tiles have been made and subdivided, decide which are blank.
     [tile.determine_blankness(min_debris_depth) for tile in tiles]
-    logger.info("%d tiles are set to be blank",
-                len([1 for tile in tiles if tile.blank]))
+    logger.info("%d tiles are set to be blank", len([1 for tile in tiles if tile.blank]))
     return tiles
 
 
@@ -643,11 +638,20 @@ def choose_match(lab, db, tolerance=1, usage_penalty=1):
     # "just noticeable difference"
     JND = 2.3
     (L1, a1, b1), (L2, a2, b2), (L3, a3, b3), (L4, a4, b4) = lab
-    tokens = {'L1': L1, 'a1': a1, 'b1': b1,
-              'L2': L2, 'a2': a2, 'b2': b2,
-              'L3': L3, 'a3': a3, 'b3': b3,
-              'L4': L4, 'a4': a4, 'b4': b4,
-              'tol': tolerance*JND, 'usage_penalty': usage_penalty*JND}
+    tokens = {'L1': L1,
+              'a1': a1,
+              'b1': b1,
+              'L2': L2,
+              'a2': a2,
+              'b2': b2,
+              'L3': L3,
+              'a3': a3,
+              'b3': b3,
+              'L4': L4,
+              'a4': a4,
+              'b4': b4,
+              'tol': tolerance * JND,
+              'usage_penalty': usage_penalty * JND}
 
     c = db.cursor()
     try:
@@ -693,8 +697,7 @@ def choose_match(lab, db, tolerance=1, usage_penalty=1):
         match = c.fetchone()
         if not match:
             return choose_match(lab, db, tolerance + 1)
-        c.execute("UPDATE Images SET usages=1+usages WHERE image_id=?",
-                  (match['image_id'],))
+        c.execute("UPDATE Images SET usages=1+usages WHERE image_id=?", (match['image_id'], ))
     finally:
         c.close()
     logger.debug("%s", match)
@@ -705,24 +708,21 @@ def crop_to_fit(img, tile_size):
     "Return a copy of img cropped to precisely fill the dimesions tile_size."
     img_w, img_h = img.size
     tile_w, tile_h = tile_size
-    img_aspect = img_w/img_h
-    tile_aspect = tile_w/tile_h
+    img_aspect = img_w / img_h
+    tile_aspect = tile_w / tile_h
     if img_aspect > tile_aspect:
         # It's too wide.
         crop_h = img_h
-        crop_w = int(round(crop_h*tile_aspect))
-        x_offset = int((img_w - crop_w)/2)
+        crop_w = int(round(crop_h * tile_aspect))
+        x_offset = int((img_w - crop_w) / 2)
         y_offset = 0
     else:
         # It's too tall.
         crop_w = img_w
-        crop_h = int(round(crop_w/tile_aspect))
+        crop_h = int(round(crop_w / tile_aspect))
         x_offset = 0
-        y_offset = int((img_h - crop_h)/2)
-    img = img.crop((x_offset,
-                    y_offset,
-                    x_offset + crop_w,
-                    y_offset + crop_h))
+        y_offset = int((img_h - crop_h) / 2)
+    img = img.crop((x_offset, y_offset, x_offset + crop_w, y_offset + crop_h))
     img = img.resize((tile_w, tile_h), Image.ANTIALIAS)
     return img
 
@@ -731,7 +731,7 @@ def shrink_by_lightness(pad, tile_size, dL):
     """The greater the greater the lightness discrepancy dL
     the smaller the tile will shrunk."""
     sgn = lambda x: (x > 0) - (x < 0)
-    if sgn(pad)*dL < 0:
+    if sgn(pad) * dL < 0:
         return tile_size
     # the largest possible distance in Lab space
     MAX_dL = 100
@@ -739,8 +739,8 @@ def shrink_by_lightness(pad, tile_size, dL):
     MIN = 0.5
     # not so close to unity that is looks accidental
     MAX = 0.95
-    scaling = MAX - (MAX - MIN)*(-pad*dL)/MAX_dL
-    shrunk_size = [int(scaling*dim) for dim in tile_size]
+    scaling = MAX - (MAX - MIN) * (-pad * dL) / MAX_dL
+    shrunk_size = [int(scaling * dim) for dim in tile_size]
     return shrunk_size
 
 
@@ -749,7 +749,7 @@ def tile_position(tile, size, scatter=False, margin=0):
     possible margins and optional random nudges for a 'scattered' look."""
     # Sum position of original ancestor tile, relative position of this tile's
     # container, and any margins that this tile has.
-    ancestor_pos = [tile.x*tile.ancestor_size[0], tile.y*tile.ancestor_size[1]]
+    ancestor_pos = [tile.x * tile.ancestor_size[0], tile.y * tile.ancestor_size[1]]
     if tile.depth == 0:
         rel_pos = [[0, 0]]
     else:
@@ -760,7 +760,7 @@ def tile_position(tile, size, scatter=False, margin=0):
     if tile.size == size:
         padding = [0, 0]
     else:
-        padding = [(x_y1[0] - x_y1[1])//2 for x_y1 in zip(*([size, tile.size]))]
+        padding = [(x_y1[0] - x_y1[1]) // 2 for x_y1 in zip(*([size, tile.size]))]
     if scatter:
         padding = [random.randint(0, 1 + margin), random.randint(0, 1 + margin)]
     pos = tuple(map(sum, list(zip(*([ancestor_pos] + rel_pos + [padding])))))
@@ -768,10 +768,10 @@ def tile_position(tile, size, scatter=False, margin=0):
 
 
 @memo
-def open_tile(filename, temp_size=(100,100)):
+def open_tile(filename, temp_size=(100, 100)):
     """This memoized function only opens each image once."""
     im = Image.open(filename)
-    im.thumbnail(temp_size, Image.ANTIALIAS) # Resize to fit within temp_size without cropping.
+    im.thumbnail(temp_size, Image.ANTIALIAS)  # Resize to fit within temp_size without cropping.
     return im
 
 
@@ -785,19 +785,23 @@ def matchmaker(tiles, db_name, tolerance=1, usage_penalty=1, usage_impunity=2):
             if tile.blank:
                 next(pbar)
                 continue
-            tile.match = choose_match(tile.lab, db, tolerance,
-                usage_penalty if tile.depth < usage_impunity else 0)
+            tile.match = choose_match(tile.lab, db, tolerance, usage_penalty
+                                      if tile.depth < usage_impunity else 0)
             next(pbar)
     finally:
         db.close()
 
 
-def mosaic(tiles, pad=False, scatter=False, margin=0, scaled_margin=False,
+def mosaic(tiles,
+           pad=False,
+           scatter=False,
+           margin=0,
+           scaled_margin=False,
            background=(255, 255, 255)):
     """Return the mosaic image."""
     # Infer dimensions so they don't have to be passed in the function call.
     dimensions = list(map(max, list(zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))))
-    mosaic_size = [x_y2[0]*x_y2[1] for x_y2 in zip(*[tiles[0].ancestor_size, dimensions])]
+    mosaic_size = [x_y2[0] * x_y2[1] for x_y2 in zip(*[tiles[0].ancestor_size, dimensions])]
     mos = Image.new('RGB', mosaic_size, background)
     pbar = progress_bar(len(tiles), "Scaling and placing tiles")
     random.shuffle(tiles)
@@ -812,7 +816,7 @@ def mosaic(tiles, pad=False, scatter=False, margin=0, scaled_margin=False,
         else:
             size = tile.size
         if scaled_margin:
-            pos = tile_position(tile, size, scatter, margin//(1 + tile.depth))
+            pos = tile_position(tile, size, scatter, margin // (1 + tile.depth))
         else:
             pos = tile_position(tile, size, scatter, margin)
         mos.paste(crop_to_fit(tile.match_img, size), pos)
@@ -825,13 +829,13 @@ def assemble_tiles(tiles, margin=1):
     assembling new tiles (without blanks) to see how partitioning looks."""
     # Infer dimensions so they don't have to be passed in the function call.
     dimensions = list(map(max, list(zip(*[(1 + tile.x, 1 + tile.y) for tile in tiles]))))
-    mosaic_size = [x_y3[0]*x_y3[1] for x_y3 in zip(*[tiles[0].ancestor_size, dimensions])]
+    mosaic_size = [x_y3[0] * x_y3[1] for x_y3 in zip(*[tiles[0].ancestor_size, dimensions])]
     background = (255, 255, 255)
     mos = Image.new('RGB', mosaic_size, background)
     for tile in tiles:
         if tile.blank:
             continue
-        shrunk = tile.size[0]-2*int(margin), tile.size[1]-2*int(margin)
+        shrunk = tile.size[0] - 2 * int(margin), tile.size[1] - 2 * int(margin)
         pos = tile_position(tile, shrunk, False, 0)
         mos.paste(tile.resize(shrunk), pos)
     return mos
@@ -852,4 +856,4 @@ def reset_usage(db):
 
 
 def testing():
-    pm.simple('images/samples', 'images/samples/dan-allan.jpg', (10,10), 'output.jpg')
+    pm.simple('images/samples', 'images/samples/dan-allan.jpg', (10, 10), 'output.jpg')
